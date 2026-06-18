@@ -134,15 +134,20 @@ def _redirect_uri_ok(uri: str) -> bool:
 
     The URL is parsed (not string-prefixed) so lookalike hosts such as
     chatgpt.com.evil.com or chatgpt.com@evil.com cannot pass the host check.
-    Rejected values are logged so the operator can discover the exact
-    redirect_uri (or host) their client uses and allow it.
+    urlsplit can raise ValueError on some malformed inputs; that is caught and
+    treated as not allowed. Rejected values are logged so the operator can
+    discover the exact redirect_uri (or host) their client uses and allow it.
     """
     if uri in ALLOWED_REDIRECT_URIS:
         return True
     if ALLOWED_REDIRECT_HOSTS:
-        parts = urlsplit(uri)
+        try:
+            parts = urlsplit(uri)
+        except ValueError:
+            parts = None  # malformed URL -> treat as not allowed
         if (
-            parts.scheme == "https"
+            parts is not None
+            and parts.scheme == "https"
             and parts.hostname
             and parts.hostname.lower() in ALLOWED_REDIRECT_HOSTS
         ):
