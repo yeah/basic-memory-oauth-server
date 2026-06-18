@@ -453,12 +453,21 @@ routes = [
 
 app = Starlette(routes=routes, lifespan=_lifespan)
 
-# Startup check: surface missing secrets early
-for _name, _val in [("CLIENT_SECRET", CLIENT_SECRET),
-                    ("JWT_SECRET", JWT_SECRET),
-                    ("LOGIN_PASSWORD", LOGIN_PASSWORD)]:
-    if not _val:
-        print(f"WARNING: {_name} is not set (check your .env)!")
+# Startup check: refuse to run without the secrets that protect every endpoint.
+# Empty values would otherwise mean an empty password / empty client secret is
+# accepted, i.e. a silent full auth bypass. Fail closed instead of warning.
+_missing = [
+    _name for _name, _val in [
+        ("CLIENT_SECRET", CLIENT_SECRET),
+        ("JWT_SECRET", JWT_SECRET),
+        ("LOGIN_PASSWORD", LOGIN_PASSWORD),
+    ] if not _val
+]
+if _missing:
+    raise SystemExit(
+        "refusing to start: missing required secret(s) in .env: "
+        + ", ".join(_missing)
+    )
 
 
 if __name__ == "__main__":
