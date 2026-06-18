@@ -22,6 +22,7 @@ import html
 import os
 import secrets
 import time
+from collections import deque
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -62,6 +63,17 @@ CLIENT_ID = os.environ.get("CLIENT_ID", "basic-memory")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET", "")
 JWT_SECRET = os.environ.get("JWT_SECRET", "")
 LOGIN_PASSWORD = os.environ.get("LOGIN_PASSWORD", "")
+
+# Brute-force throttle for the human-chosen LOGIN_PASSWORD (used at /authorize
+# and /dav). After AUTH_FAIL_LIMIT failed attempts within AUTH_FAIL_WINDOW
+# seconds, further attempts get 429 until the window cools down. The counter is
+# GLOBAL (not per-IP): behind the reverse proxy the real client IP is not
+# trustworthy (X-Forwarded-For is spoofable, and a forged one could lock out
+# the legitimate user), so a global limit is the robust choice. Trade-off: an
+# attacker actively guessing can also lock the legitimate user out for the
+# (short, self-expiring) window. Set AUTH_FAIL_LIMIT=0 to disable.
+AUTH_FAIL_LIMIT = int(os.environ.get("AUTH_FAIL_LIMIT", "10"))
+AUTH_FAIL_WINDOW = int(os.environ.get("AUTH_FAIL_WINDOW", "300"))  # seconds
 
 # Exact-match allowlist of OAuth redirect URIs (comma-separated in .env).
 # The authorization code is only ever handed to a URI allowed here (or by
@@ -107,6 +119,9 @@ AUTH_CODE_TTL = int(os.environ.get("AUTH_CODE_TTL", "300"))                 # 5 
 # re-authenticate once (a new refresh token is then issued).
 _auth_codes: dict[str, dict] = {}      # code -> {challenge, redirect_uri, expires, scope}
 _refresh_tokens: dict[str, dict] = {}  # token -> {expires}
+# Timestamps of recent failed auth attempts (bounded to the limit), for the
+# global brute-force throttle. Only failures are recorded; success clears it.
+_auth_fail_times: deque[float] = deque(maxlen=max(1, AUTH_FAIL_LIMIT))
 
 # Shared async HTTP client for proxying (created on startup).
 _client: httpx.AsyncClient | None = None
@@ -124,6 +139,38 @@ def _esc(value: str) -> str:
     """HTML-escape a value for safe interpolation into the login page,
     including quotes so it is safe inside HTML attributes."""
     return html.escape(value, quote=True)
+
+
+def _throttle_retry_after() -> int:
+    """Seconds the caller must wait if the failed-auth limit is exceeded, else 0.
+
+    Global sliding window: failures older than AUTH_FAIL_WINDOW are dropped; if
+    AUTH_FAIL_LIMIT failures remain within the window, return how long until the
+    oldest of them ages out. Returns 0 when throttling is disabled or under the
+    limit.
+    """
+    if AUTH_FAIL_LIMIT <= 0:
+        return 0
+    now = time.time()
+    cutoff = now - AUTH_FAIL_WINDOW
+    while _auth_fail_times and _auth_fail_times[0] < cutoff:
+        _auth_fail_times.popleft()
+    if len(_auth_fail_times) < AUTH_FAIL_LIMIT:
+        return 0
+    return max(1, int(_auth_fail_times[0] + AUTH_FAIL_WINDOW - now))
+
+
+def _record_auth_failure() -> None:
+    _auth_fail_times.append(time.time())
+
+
+def _reset_auth_failures() -> None:
+    _auth_fail_times.clear()
+
+
+def _429(retry_after: int) -> Response:
+    """Too Many Requests, with a Retry-After hint (seconds)."""
+    return Response(status_code=429, headers={"Retry-After": str(retry_after)})
 
 
 def _redirect_uri_ok(uri: str) -> bool:
@@ -295,7 +342,11 @@ async def authorize(request):
              "error_description": "redirect_uri not allowed"},
             status_code=400,
         )
+    retry = _throttle_retry_after()
+    if retry:
+        return _429(retry)
     if not secrets.compare_digest(form.get("password", ""), LOGIN_PASSWORD):
+        _record_auth_failure()
         html_page = _LOGIN_FORM.format(
             error='<p style="color:#c00">Wrong password</p>',  # server-controlled
             logo_uri=_esc(LOGO_URI),
@@ -306,6 +357,8 @@ async def authorize(request):
             scope=_esc(form.get("scope", "mcp")),
         )
         return HTMLResponse(html_page, status_code=401)
+
+    _reset_auth_failures()  # successful login clears the throttle
 
     # Issue authorization code
     code = secrets.token_urlsafe(32)
@@ -468,8 +521,17 @@ async def proxy_mcp(request):
 # --- /dav : Basic-Auth-protected proxy to WsgiDAV -----------------------------
 
 async def proxy_dav(request):
-    if not _check_basic_auth(request.headers):
+    # A request with no Authorization header is the normal WebDAV challenge
+    # handshake, not a password guess: answer 401 without counting it.
+    if not request.headers.get("authorization", "").startswith("Basic "):
         return _401_basic()
+    retry = _throttle_retry_after()
+    if retry:
+        return _429(retry)
+    if not _check_basic_auth(request.headers):
+        _record_auth_failure()
+        return _401_basic()
+    _reset_auth_failures()  # successful auth clears the throttle
     return await _proxy_to(request, DAV_UPSTREAM_URL)
 
 

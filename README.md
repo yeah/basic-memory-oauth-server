@@ -91,12 +91,14 @@ BASE_URL=https://ubernaut.uber.space
 CLIENT_ID=basic-memory
 CLIENT_SECRET=<first openssl value>
 JWT_SECRET=<second openssl value>
-LOGIN_PASSWORD=<a password you choose>
+LOGIN_PASSWORD=<a long, randomly generated password>
 ALLOWED_REDIRECT_HOSTS=claude.ai,chatgpt.com,callback.mistral.ai
 ```
 
 `LOGIN_PASSWORD` is used both for the OAuth browser login and as the WebDAV
-password. The WebDAV username defaults to `CLIENT_ID`.
+password. The WebDAV username defaults to `CLIENT_ID`. Make it long and random:
+it is the one human-chosen secret, and although a global throttle slows guessing
+(see below), a strong password is the real protection.
 
 OAuth callbacks are restricted so the authorization code can only go to a
 client you trust. A redirect URI is allowed if **either** check passes:
@@ -286,6 +288,8 @@ while Basic Memory is actively writing it.
 | `CLIENT_SECRET`     | yes      | —                           | Fixed OAuth client secret. |
 | `JWT_SECRET`        | yes      | —                           | Signing key for access tokens. Keep stable. |
 | `LOGIN_PASSWORD`    | yes      | —                           | Password for both OAuth login and WebDAV Basic Auth. |
+| `AUTH_FAIL_LIMIT`   | no       | `10`                        | Failed LOGIN_PASSWORD attempts (global, across `/authorize` and `/dav`) within `AUTH_FAIL_WINDOW` before further attempts get HTTP 429. `0` disables the throttle. |
+| `AUTH_FAIL_WINDOW`  | no       | `300`                       | Sliding window (seconds) for `AUTH_FAIL_LIMIT`. |
 | `ALLOWED_REDIRECT_HOSTS` | yes* | —                       | Comma-separated hosts; an `https` redirect URI whose host matches exactly is allowed (any path). *Either this or `ALLOWED_REDIRECT_URIS` must be set. |
 | `ALLOWED_REDIRECT_URIS` | yes* | —                           | Comma-separated **exact** full-URI allowlist of OAuth redirect URIs. *Either this or `ALLOWED_REDIRECT_HOSTS` must be set. Rejected URIs are logged. |
 | `WEBDAV_USERNAME`   | no       | value of `CLIENT_ID`        | Override the WebDAV username if you want it to differ from the OAuth client ID. |
@@ -317,6 +321,13 @@ while Basic Memory is actively writing it.
   by Uberspace's web backend in front of the gateway.
 - The gateway implements its own OAuth and Basic Auth. Review the code before
   relying on it for anything beyond personal use.
+- A global brute-force throttle (`AUTH_FAIL_LIMIT` / `AUTH_FAIL_WINDOW`) slows
+  password guessing against `/authorize` and `/dav`: too many failed attempts
+  in the window return HTTP 429 until it cools down. It is global rather than
+  per-IP because the real client IP is not trustworthy behind the reverse
+  proxy. The trade-off is that someone actively guessing can also lock you out
+  for the (short, self-expiring) window. It is **not** a substitute for a
+  strong password — use a long, randomly generated `LOGIN_PASSWORD`.
 
 ## License
 
