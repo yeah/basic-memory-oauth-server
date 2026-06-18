@@ -48,7 +48,8 @@ RESOURCE_URL = f"{BASE_URL}/mcp"
 SCOPES = ["mcp"]
 
 # Basic Memory logo, referenced directly from basicmemory.com (not downloaded
-# or re-hosted). Shown on the login page and advertised in resource metadata.
+# or re-hosted). Shown on the login page, advertised in resource metadata, and
+# used as the /favicon.ico redirect target.
 LOGO_URI = os.environ.get(
     "LOGO_URI",
     "https://basicmemory.com/images/basic-memory/disk-logo-black.svg",
@@ -395,6 +396,15 @@ async def proxy_dav(request):
     return await _proxy_to(request, DAV_UPSTREAM_URL)
 
 
+# --- /favicon.ico : redirect to the Basic Memory logo ------------------------
+# Browsers and favicon services (e.g. the one Claude uses to show a connector
+# icon) request /favicon.ico at the domain root. We 302-redirect to the logo
+# hosted on basicmemory.com, so nothing is stored or served locally.
+
+async def favicon(request):
+    return RedirectResponse(LOGO_URI, status_code=302)
+
+
 # --- App lifecycle ------------------------------------------------------------
 
 from contextlib import asynccontextmanager
@@ -425,6 +435,7 @@ routes = [
           authorization_server_metadata, methods=["GET"]),
     Route("/authorize", authorize, methods=["GET", "POST"]),
     Route("/token", token, methods=["POST"]),
+    Route("/favicon.ico", favicon, methods=["GET"]),
     # MCP endpoint (and any sub-path), OAuth-protected.
     Route("/mcp", proxy_mcp, methods=["GET", "POST", "DELETE"]),
     Route("/mcp/{path:path}", proxy_mcp, methods=["GET", "POST", "DELETE"]),

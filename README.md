@@ -14,7 +14,7 @@ doubles as the WebDAV username, and one password covers both the OAuth login and
 WebDAV Basic Auth.
 
 ```
-                          ┌─────────────────────────────────────────┐
+                          ┌────────────────────────────────────┐
 Claude / ChatGPT ─OAuth──▶│                                         │──▶ Basic Memory (8000)
                           │   auth_gateway.py  (single entrypoint)   │
 Obsidian ────────Basic───▶│   /mcp  → OAuth  → proxy                 │──▶ WsgiDAV (8002)
@@ -180,11 +180,18 @@ uberspace web backend add /authorize port 8001
 uberspace web backend add /token port 8001
 uberspace web backend add /.well-known/oauth-protected-resource port 8001
 uberspace web backend add /.well-known/oauth-authorization-server port 8001
+uberspace web backend add /favicon.ico port 8001
 uberspace web backend list
 ```
 
 > `/` itself is no longer routed to the gateway, leaving it available for
 > anything else you host on this Uberspace.
+>
+> The `/favicon.ico` mapping is optional. The gateway answers it with a 302
+> redirect to the Basic Memory logo on basicmemory.com, so favicon services
+> (such as the one Claude uses to show a connector icon) find an icon for the
+> domain. Note that these services cache per-domain for a long time, so any
+> change may take a while to appear.
 
 ---
 
@@ -244,6 +251,7 @@ while Basic Memory is actively writing it.
 | `JWT_SECRET`        | yes      | —                           | Signing key for access tokens. Keep stable. |
 | `LOGIN_PASSWORD`    | yes      | —                           | Password for both OAuth login and WebDAV Basic Auth. |
 | `WEBDAV_USERNAME`   | no       | value of `CLIENT_ID`        | Override the WebDAV username if you want it to differ from the OAuth client ID. |
+| `LOGO_URI`          | no       | Basic Memory logo on basicmemory.com | Logo shown on the login page, in resource metadata, and as the /favicon.ico redirect target. |
 | `ACCESS_TOKEN_TTL`  | no       | `3600`                      | Access-token lifetime (seconds). |
 | `REFRESH_TOKEN_TTL` | no       | `2592000`                   | Refresh-token lifetime (seconds). |
 | `AUTH_CODE_TTL`     | no       | `300`                       | Authorization-code lifetime (seconds). |
