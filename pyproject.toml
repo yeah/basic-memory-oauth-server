@@ -1,0 +1,16 @@
+[project]
+name = "basic-memory-uberspace"
+version = "0.1.0"
+description = "Single-user OAuth 2.1 gateway that exposes a self-hosted Basic Memory MCP server to OAuth-capable AI clients (Claude, ChatGPT, ...) on Uberspace."
+requires-python = ">=3.10"
+dependencies = [
+    "starlette>=0.40",
+    "uvicorn>=0.30",
+    "httpx>=0.27",
+    "pyjwt>=2.8",
+    "python-dotenv>=1.0",
+    "python-multipart>=0.0.9",
+]
+
+[tool.uv]
+package = false
