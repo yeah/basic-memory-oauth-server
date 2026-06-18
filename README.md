@@ -65,7 +65,6 @@ All commands run on your Uberspace shell unless noted otherwise. Replace
 
 ```bash
 uv tool install basic-memory
-basic-memory sync          # initializes ~/.basic-memory and indexes your notes
 basic-memory --version     # sanity check
 ```
 
@@ -132,38 +131,27 @@ uberspace service add basicmemory \
 > reachable only through the gateway. (The gateway itself must bind `0.0.0.0`,
 > see below, because that is what the web backend connects to.)
 
-**The gateway** — runs via uv, binds `0.0.0.0` (required for the web backend):
+**The gateway** — runs via uv, binds `0.0.0.0` (required for the web backend).
+The `--workdir` is essential: uv needs it to find `pyproject.toml`/`.venv`, and
+the gateway needs it to find `.env`. Without it the service fails with
+`ModuleNotFoundError`.
 
 ```bash
-uberspace service add auth_gateway "/usr/bin/uv run python $HOME/auth_gateway/auth_gateway.py"
+uberspace service add auth_gateway \
+  "/usr/bin/uv run python auth_gateway.py" \
+  --workdir "$HOME/auth_gateway"
 ```
 
-Then set the working directory in the unit file (so uv finds `pyproject.toml`
-and the gateway finds `.env`):
+Check both services are running:
 
 ```bash
-nano ~/.config/systemd/user/auth_gateway.service
-```
-
-Make the `[Service]` section look like this:
-
-```ini
-[Service]
-WorkingDirectory=/home/ubernaut/auth_gateway
-ExecStart=/usr/bin/uv run python auth_gateway.py
-```
-
-Reload and (re)start:
-
-```bash
-systemctl --user daemon-reload
-systemctl --user restart auth_gateway
 systemctl --user status auth_gateway --no-pager   # should be active (running)
 systemctl --user status basicmemory --no-pager    # should be active (running)
 ```
 
-If the gateway logs `WARNING: ... is not set`, your `.env` is not being read —
-check `WorkingDirectory` and that `.env` exists in it.
+If the gateway logs `ModuleNotFoundError` or `WARNING: ... is not set`, the
+working directory is wrong — verify `--workdir` points at the cloned repo and
+that `.env` exists there.
 
 ### 5. Wire up the web backend
 
@@ -172,13 +160,12 @@ to Basic Memory after checking the token. Do **not** add a separate `/mcp`
 backend pointing at port 8000 — that would bypass authentication.
 
 ```bash
-uberspace web backend set / --http --port 8001
+uberspace web backend add / port 8001
 uberspace web backend list
 ```
 
-> On some Uberspace 8 versions the subcommand is `add` instead of `set`:
-> `uberspace web backend add / port 8001` (use `--force` if `/` already exists).
-> The list should show only `/ → 8001`.
+> If `/` already has a backend, append `--force`. The list should show only
+> `/ → 8001`.
 
 ---
 
