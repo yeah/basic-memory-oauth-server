@@ -23,6 +23,10 @@ services:
       - edge
 
   # The single auth entrypoint (OAuth 2.1 for /mcp, Basic Auth for /dav).
+  # This is the ONLY service that builds the shared image; the other two
+  # reference it by tag (see below). Building the same tag from multiple
+  # services in parallel races on export with the containerd image store
+  # ("image already exists"), so we build it exactly once here.
   gateway:
     build: .
     image: basic-memory-stack:latest
@@ -50,9 +54,10 @@ services:
       - internal
 
   # Basic Memory MCP server. Internal only, no internet (internal network).
+  # Reuses the image built by the gateway service; never pulls (it is local).
   basicmemory:
-    build: .
     image: basic-memory-stack:latest
+    pull_policy: never
     restart: unless-stopped
     command: ["basic-memory", "mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]
     environment:
@@ -69,9 +74,10 @@ services:
       - internal
 
   # WebDAV view of the same notes. Internal only, no internet.
+  # Reuses the image built by the gateway service; never pulls (it is local).
   wsgidav:
-    build: .
     image: basic-memory-stack:latest
+    pull_policy: never
     restart: unless-stopped
     command: ["wsgidav", "--config", "/app/docker/wsgidav.yaml"]
     volumes:
