@@ -19,9 +19,6 @@ services:
     depends_on:
       gateway:
         condition: service_healthy
-    networks:
-      - edge
-
   # The single auth entrypoint (OAuth 2.1 for /mcp, Basic Auth for /dav).
   # This is the ONLY service that builds the shared image; the other two
   # reference it by tag (see below). Building the same tag from multiple
@@ -49,10 +46,6 @@ services:
         condition: service_healthy
       wsgidav:
         condition: service_healthy
-    networks:
-      - edge
-      - internal
-
   # Basic Memory MCP server. Internal only, no internet (internal network).
   # Reuses the image built by the gateway service; never pulls (it is local).
   basicmemory:
@@ -70,9 +63,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-    networks:
-      - internal
-
   # WebDAV view of the same notes. Internal only, no internet.
   # Reuses the image built by the gateway service; never pulls (it is local).
   wsgidav:
@@ -88,15 +78,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-    networks:
-      - internal
-
 volumes:
-  notes:          # Markdown notes + Basic Memory SQLite index (shared)
-  caddy_data:     # Let's Encrypt certificates and ACME account
-  caddy_config:
-
-networks:
-  edge:
-  internal:
-    internal: true   # no outbound internet for basicmemory / wsgidav
+  notes: null # Markdown notes + Basic Memory SQLite index (shared)
+  caddy_data: null # Let's Encrypt certificates and ACME account
+  caddy_config: null
