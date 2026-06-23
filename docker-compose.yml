@@ -28,15 +28,23 @@ services:
     build: .
     image: basic-memory-stack:latest
     restart: unless-stopped
-    command: ["python", "auth_gateway.py"]
+    command:
+      - python
+      - auth_gateway.py
     env_file: .env
     environment:
       PORT: "8001"
-      BASE_URL: "https://${DOMAIN:?set DOMAIN in your .env}"
-      UPSTREAM_URL: "http://basicmemory:8000"
-      DAV_UPSTREAM_URL: "http://wsgidav:8002"
+      BASE_URL: https://${DOMAIN:?set DOMAIN in your .env}
+      UPSTREAM_URL: http://basicmemory:8000
+      DAV_UPSTREAM_URL: http://wsgidav:8002
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/.well-known/oauth-protected-resource', timeout=3)"]
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request;
+          urllib.request.urlopen('http://localhost:8001/.well-known/oauth-protected-resource',
+          timeout=3)
       interval: 15s
       timeout: 5s
       retries: 5
@@ -52,13 +60,25 @@ services:
     image: basic-memory-stack:latest
     pull_policy: never
     restart: unless-stopped
-    command: ["basic-memory", "mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]
     environment:
       HOME: /data            # default project -> /data/basic-memory, DB -> /data/.basic-memory
+    command:
+      - basic-memory
+      - mcp
+      - --transport
+      - streamable-http
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
     volumes:
       - notes:/data
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 8000), 3).close()"]
+      test:
+        - CMD
+        - python
+        - -c
+        - import socket; socket.create_connection(('localhost', 8000), 3).close()
       interval: 15s
       timeout: 5s
       retries: 5
@@ -69,11 +89,18 @@ services:
     image: basic-memory-stack:latest
     pull_policy: never
     restart: unless-stopped
-    command: ["wsgidav", "--config", "/app/docker/wsgidav.yaml"]
+    command:
+      - wsgidav
+      - --config
+      - /app/docker/wsgidav.yaml
     volumes:
       - notes:/data
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 8002), 3).close()"]
+      test:
+        - CMD
+        - python
+        - -c
+        - import socket; socket.create_connection(('localhost', 8002), 3).close()
       interval: 15s
       timeout: 5s
       retries: 5
