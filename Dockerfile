@@ -28,7 +28,7 @@ COPY pyproject.toml uv.lock* ./
 RUN uv sync --no-dev
 
 # Application code and the container WsgiDAV config.
-COPY auth_gateway.py ./
+COPY auth_gateway.py file_probe.py ./
 COPY docker/wsgidav.yaml ./docker/wsgidav.yaml
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

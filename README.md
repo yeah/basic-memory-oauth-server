@@ -157,6 +157,49 @@ Compose, so there you only provide `DOMAIN` and the secrets.
 | `ACCESS_TOKEN_TTL`  | no       | `3600`                      | Access-token lifetime (seconds). |
 | `REFRESH_TOKEN_TTL` | no       | `2592000`                   | Refresh-token lifetime (seconds). |
 | `AUTH_CODE_TTL`     | no       | `300`                       | Authorization-code lifetime (seconds). |
+| `FILE_PROBE_ENABLED` | no      | off                         | Set to `1` to serve the diagnostic endpoint `/mcp-probe` (see [File upload probe](#file-upload-probe)). |
+| `FILE_PROBE_MAX_BYTES` | no    | `26214400`                  | Largest file the probe accepts (bytes). |
+| `FILE_PROBE_MAX_INLINE_BYTES` | no | `1048576`               | Largest file the probe accepts inline in the tool call (bytes). |
+| `FILE_PROBE_TTL`    | no       | `600`                       | Lifetime of a probe upload target (seconds). |
+| `FILE_PROBE_DIR`    | no       | `<tmp>/bm-file-probe`       | Where probe uploads wait until they are checked and deleted. |
+
+---
+
+## File upload probe
+
+An optional, diagnostic MCP endpoint that answers one question: can your MCP
+client hand a **file** (a PDF, an image) to a tool without the model writing
+the bytes out as text? It implements the draft
+[MCP file-uploads extension](https://github.com/modelcontextprotocol/experimental-ext-file-uploads)
+(`x-mcp-file`, pinned to the draft of 2026-11-09). The draft is experimental
+and may change, and which clients support it is not documented yet. That is
+what the probe finds out.
+
+Enable it with `FILE_PROBE_ENABLED=1`, restart the gateway, and add a second
+custom connector with the URL `https://<your-domain>/mcp-probe` and the same
+OAuth client ID and secret as the main connector. It offers two tools:
+
+- `probe_file` takes one file argument. It reports how the file arrived
+  (`inline`, `out-of-band` or not at all), its size and SHA-256, and then
+  deletes it. Nothing is stored and the notes are never touched.
+- `probe_status` shows what the server saw from the client: protocol version,
+  client name, declared capabilities, and the outcome of recent calls. It works
+  even if the client cannot use `probe_file`.
+
+How to read the result of asking the assistant to "send this file to
+`probe_file`":
+
+| Result | Meaning |
+|--------|---------|
+| `transfer: out-of-band` or `inline`, with the correct size | The client supports the extension. A real upload tool can be built on it. |
+| The assistant cannot attach the file, or writes base64 by hand | The client ignores `x-mcp-file`. `probe_status` shows whether it declared the extension at all. |
+| An error about a missing capability or protocol version | The client speaks an older protocol revision. Out-of-band upload needs `2026-07-28` or later. |
+
+The same events are printed to the gateway log with the prefix `file-probe:`.
+
+The probe accepts the same access token as `/mcp`. Out-of-band uploads go to
+`/mcp-probe/upload/<id>` and are authorized by a one-time token that only the
+client receives. Turn the probe off again when you are done testing.
 
 ---
 

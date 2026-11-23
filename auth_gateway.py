@@ -111,6 +111,12 @@ DAV_UPSTREAM_URL = os.environ.get("DAV_UPSTREAM_URL", "http://127.0.0.1:8002").r
 # a single set of secrets in .env.
 WEBDAV_USERNAME = os.environ.get("WEBDAV_USERNAME", CLIENT_ID)
 
+# Diagnostic file-upload probe at /mcp-probe (see file_probe.py). Off unless
+# explicitly enabled, because it adds an endpoint that accepts uploads.
+FILE_PROBE_ENABLED = os.environ.get("FILE_PROBE_ENABLED", "").strip().lower() in (
+    "1", "true", "yes", "on",
+)
+
 ACCESS_TOKEN_TTL = int(os.environ.get("ACCESS_TOKEN_TTL", "3600"))          # 1 hour
 REFRESH_TOKEN_TTL = int(os.environ.get("REFRESH_TOKEN_TTL", str(60 * 60 * 24 * 30)))  # 30 days
 AUTH_CODE_TTL = int(os.environ.get("AUTH_CODE_TTL", "300"))                 # 5 minutes
@@ -443,10 +449,10 @@ async def token(request):
 
 # --- Reverse proxy core (shared by both auth paths) ---------------------------
 
-def _401_bearer() -> Response:
+def _401_bearer(metadata_path: str = "/.well-known/oauth-protected-resource") -> Response:
     www_auth = (
         f'Bearer realm="mcp", '
-        f'resource_metadata="{BASE_URL}/.well-known/oauth-protected-resource"'
+        f'resource_metadata="{BASE_URL}{metadata_path}"'
     )
     return Response(status_code=401, headers={"WWW-Authenticate": www_auth})
 
@@ -582,6 +588,23 @@ routes = [
     Route("/dav", proxy_dav, methods=_DAV_METHODS),
     Route("/dav/{path:path}", proxy_dav, methods=_DAV_METHODS),
 ]
+
+# Optional diagnostic MCP endpoint at /mcp-probe (off by default). It tests
+# whether a client supports the draft MCP file-uploads extension; see
+# file_probe.py. It accepts the same access token as /mcp: this gateway is
+# single-user and issues one token audience, and the probe can do strictly
+# less than /mcp (it stores nothing and never touches the notes).
+if FILE_PROBE_ENABLED:
+    import file_probe
+
+    routes += file_probe.build_routes(
+        base_url=BASE_URL,
+        secret=JWT_SECRET,
+        verify_bearer=_verify_access_token,
+        unauthorized=lambda: _401_bearer(
+            "/.well-known/oauth-protected-resource/mcp-probe"
+        ),
+    )
 
 app = Starlette(routes=routes, lifespan=_lifespan)
 
